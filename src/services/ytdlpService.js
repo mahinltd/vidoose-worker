@@ -4,8 +4,15 @@ const { spawn } = require('child_process');
 
 const extractVideoMetadata = (url) => {
     return new Promise((resolve, reject) => {
-        // -J means dump JSON, --no-warnings keeps the logs clean
-        const ytDlpProcess = spawn('yt-dlp', ['-J', '--no-warnings', url]);
+        // Added Deno, Cookies, and Web Client bypass arguments
+        const args = [
+            '--cookies', '/home/ubuntu/vidoose-worker/cookies.txt',
+            '--extractor-args', 'youtube:player_client=web',
+            '--js-runtimes', 'deno',
+            '-J', '--no-warnings', url
+        ];
+
+        const ytDlpProcess = spawn('yt-dlp', args);
         let outputData = '';
         let errorData = '';
 

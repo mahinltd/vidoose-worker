@@ -8,7 +8,17 @@ const { cleanupTempFiles } = require('../utils/fileSystem');
 
 const downloadStream = (url, formatId, outputPath) => {
     return new Promise((resolve, reject) => {
-        const ytDlp = spawn('yt-dlp', ['-f', formatId, '-o', outputPath, url]);
+        // Added bypass arguments for downloading streams
+        const args = [
+            '--cookies', '/home/ubuntu/vidoose-worker/cookies.txt',
+            '--extractor-args', 'youtube:player_client=web',
+            '--js-runtimes', 'deno',
+            '-f', formatId, 
+            '-o', outputPath, 
+            url
+        ];
+
+        const ytDlp = spawn('yt-dlp', args);
         
         ytDlp.on('close', (code) => {
             if (code === 0) resolve(outputPath);
