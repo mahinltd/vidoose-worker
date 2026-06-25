@@ -1,0 +1,6 @@
+# ©2026 Vidoose Mahin Ltd develop by (Tanvir)
+
+node_modules/
+.env
+tmp/
+.DS_Store
