@@ -8,10 +8,12 @@ const { cleanupTempFiles } = require('../utils/fileSystem');
 
 const downloadStream = (url, formatId, outputPath) => {
     return new Promise((resolve, reject) => {
-        if (!formatId || formatId === 'null') return resolve(null); // Skip if no format ID
+        if (!formatId || formatId === 'null' || formatId === 'none') return resolve(null); // Skip if no format ID
 
+        // Here we added the missing '--extractor-args' magic flag back!
         const args = [
             '--cookies', '/home/ubuntu/vidoose-worker/cookies.txt',
+            '--extractor-args', 'youtube:player_client=web', 
             '--js-runtimes', 'deno',
             '-f', formatId, 
             '-o', outputPath, 
