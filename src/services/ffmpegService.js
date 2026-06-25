@@ -8,10 +8,10 @@ const { cleanupTempFiles } = require('../utils/fileSystem');
 
 const downloadStream = (url, formatId, outputPath) => {
     return new Promise((resolve, reject) => {
-        // Added bypass arguments for downloading streams
+        if (!formatId || formatId === 'null') return resolve(null); // Skip if no format ID
+
         const args = [
             '--cookies', '/home/ubuntu/vidoose-worker/cookies.txt',
-            '--extractor-args', 'youtube:player_client=web',
             '--js-runtimes', 'deno',
             '-f', formatId, 
             '-o', outputPath, 
@@ -29,65 +29,66 @@ const downloadStream = (url, formatId, outputPath) => {
 
 const processAndStreamMedia = async (url, videoFormat, audioFormat, res) => {
     const timestamp = Date.now();
-    // Resolving absolute paths for the tmp directory
     const videoPath = path.join(__dirname, '../../tmp', `video_${timestamp}.mp4`);
     const audioPath = path.join(__dirname, '../../tmp', `audio_${timestamp}.m4a`);
     const finalPath = path.join(__dirname, '../../tmp', `final_${timestamp}.mp4`);
 
     try {
-        console.log(`[Core Engine] Downloading streams to ephemeral /tmp cache...`);
+        console.log(`[Core Engine] Processing stream for: ${url}`);
         
-        // Execute downloads concurrently for maximum speed
+        // CASE 1: Pre-merged format (like 360p or 720p) with NO separate audio format sent
+        if (!audioFormat || audioFormat === 'none' || audioFormat === 'null') {
+            console.log(`[Core Engine] No merging needed. Downloading single stream...`);
+            await downloadStream(url, videoFormat, finalPath);
+
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Content-Disposition', `attachment; filename="vidoose_HQ_${timestamp}.mp4"`);
+            
+            const readStream = fs.createReadStream(finalPath);
+            readStream.pipe(res);
+
+            readStream.on('close', () => cleanupTempFiles([finalPath]));
+            return;
+        }
+
+        // CASE 2: High-Res video (1080p, 4K) where Video and Audio need to be merged
+        console.log(`[Core Engine] Downloading split streams for FFmpeg merge...`);
         await Promise.all([
             downloadStream(url, videoFormat, videoPath),
             downloadStream(url, audioFormat, audioPath)
         ]);
 
         console.log(`[Core Engine] Merging streams using FFmpeg...`);
-        
         ffmpeg()
             .input(videoPath)
             .input(audioPath)
             .outputOptions([
-                '-c:v copy', // Copy video codec (extremely fast, no re-encoding)
-                '-c:a aac',  // Convert audio to AAC for wide compatibility
+                '-c:v copy',
+                '-c:a aac',
                 '-strict experimental'
             ])
             .save(finalPath)
             .on('end', () => {
                 console.log(`[Core Engine] Merge complete. Piping stream to client...`);
-                
-                // Set headers for direct browser download
                 res.setHeader('Content-Type', 'video/mp4');
                 res.setHeader('Content-Disposition', `attachment; filename="vidoose_HQ_${timestamp}.mp4"`);
 
-                // Create readable stream and pipe to user's writable response
                 const readStream = fs.createReadStream(finalPath);
                 readStream.pipe(res);
 
-                // Wipe out all temporary files immediately after the stream ends
-                readStream.on('close', () => {
-                    console.log(`[Core Engine] Stream finished. Initiating cleanup...`);
-                    cleanupTempFiles([videoPath, audioPath, finalPath]);
-                });
+                readStream.on('close', () => cleanupTempFiles([videoPath, audioPath, finalPath]));
             })
             .on('error', (err) => {
                 console.error(`[FFmpeg Error]: ${err.message}`);
                 cleanupTempFiles([videoPath, audioPath, finalPath]);
-                if (!res.headersSent) {
-                    res.status(500).json({ success: false, error: 'Failed to merge media files' });
-                }
+                if (!res.headersSent) res.status(500).json({ success: false, error: 'Failed to merge media' });
             });
 
     } catch (error) {
         console.error(`[Process Error]: ${error.message}`);
         cleanupTempFiles([videoPath, audioPath, finalPath]);
-        if (!res.headersSent) {
-            res.status(500).json({ success: false, error: 'Failed to download source streams from social platform' });
-        }
+        if (!res.headersSent) res.status(500).json({ success: false, error: 'Failed to process media' });
     }
 };
 
-module.exports = {
-    processAndStreamMedia
-};
+module.exports = { processAndStreamMedia };
